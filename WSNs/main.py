@@ -15,7 +15,7 @@ from enhanced_visualization import (
     visualize_continuous_charging_path,
     visualize_enhanced_continuous_charging
 )
-from adaptive_charging import run_adaptive_continuous_charging, simulate_step_adaptive, run_adaptive_continuous_charging_with_zones
+from adaptive_charging import run_adaptive_continuous_charging, run_optimal_position_simulation, simulate_step_adaptive, run_adaptive_continuous_charging_with_zones
 from enhanced_visualization import visualize_sensor_priorities, visualize_sensor_priorities_with_zones
 
 def main():
@@ -136,6 +136,19 @@ def main():
     # Visualize final state with complete path and charging zones
     print("\nFinal network state with complete mobile charger path and charging zones:")
     visualize_sensor_priorities_with_zones(sensors, mc, path_history)
+    
+    # Run simulation using the optimal position strategy
+    # print("\nRunning simulation with optimal position strategy...")
+    # sensors, mc, path_history = run_optimal_position_simulation(
+    #     num_steps=6,      # Fewer steps as this is more computationally intensive
+    #     time_step=3,
+    #     num_sensors=40
+    # )
+
+    # # Show final state
+    # print("\nFinal network state with complete mobile charger path and charging zones:")
+    # visualize_sensor_priorities_with_zones(sensors, mc, path_history)
+    
     
     
     print("\nSimulation complete!")
