@@ -27,7 +27,14 @@ class MobileCharger:
         return energy_to_transfer
         
     def charge_nodes_in_radius(self, sensors):
-        """Charge all sensor nodes within the charging radius"""
+        """
+        Charge all sensor nodes within the charging radius using zone-based charging efficiency
+        
+        Zones:
+        - Inner zone (0-40% of radius): 70% efficiency
+        - Middle zone (40-70% of radius): 50% efficiency
+        - Outer zone (70-100% of radius): 30% efficiency
+        """
         charged_nodes = []
         total_energy_transferred = 0
         
@@ -40,10 +47,23 @@ class MobileCharger:
                 continue
                 
             distance = np.linalg.norm([self.x - sensor.x, self.y - sensor.y])
+            
             if distance <= CHARGING_RADIUS and sensor.energy < sensor.capacity:
+                # Determine charging zone and efficiency
+                distance_ratio = distance / CHARGING_RADIUS
+                
+                if distance_ratio <= 0.4:  # Inner zone
+                    efficiency = 0.7  # 70% efficiency
+                    zone = "inner"
+                elif distance_ratio <= 0.7:  # Middle zone
+                    efficiency = 0.5  # 50% efficiency  
+                    zone = "middle"
+                else:  # Outer zone
+                    efficiency = 0.3  # 30% efficiency
+                    zone = "outer"
+                    
+                # Calculate energy to transfer
                 needed = sensor.capacity - sensor.energy
-                # Reduce charging efficiency with distance
-                efficiency = max(0.3, 1 - (distance / CHARGING_RADIUS) * 0.7)  # 30% to 100% efficiency
                 max_transfer = min(needed, self.energy)
                 energy_to_transfer = max_transfer * efficiency
                 
@@ -51,7 +71,7 @@ class MobileCharger:
                     sensor.charge(energy_to_transfer)
                     self.energy -= energy_to_transfer
                     total_energy_transferred += energy_to_transfer
-                    charged_nodes.append(sensor.id)
+                    charged_nodes.append((sensor.id, zone, efficiency))
                     
                     if self.energy <= 0:
                         break

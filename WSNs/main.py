@@ -2,6 +2,7 @@ import numpy as np
 import matplotlib.pyplot as plt
 import torch
 import os
+import random
 from config import *
 from environment import initialize_environment, get_state_vector, get_valid_actions
 from sensor_node import SensorNode
@@ -14,6 +15,8 @@ from enhanced_visualization import (
     visualize_continuous_charging_path,
     visualize_enhanced_continuous_charging
 )
+from adaptive_charging import run_adaptive_continuous_charging, simulate_step_adaptive, run_adaptive_continuous_charging_with_zones
+from enhanced_visualization import visualize_sensor_priorities, visualize_sensor_priorities_with_zones
 
 def main():
     # Initial setup and demonstration
@@ -26,8 +29,8 @@ def main():
     
     # Run simple simulation
     print("\nRunning basic simulation...")
-    sensors, mc = initialize_environment()
-    run_simulation(sensors, mc, max_steps=100, time_step=15, visualize_every=20)
+    # sensors, mc = initialize_environment()
+    # run_simulation(sensors, mc, max_steps=100, time_step=15, visualize_every=20)
     
     # Set up DQN agent
     print("\nSetting up DQN agent...")
@@ -74,7 +77,7 @@ def main():
     
     # Show advanced visualization
     print("\nRunning charger path visualization...")
-    visualize_charger_path(num_steps=10, time_step=15)
+    # visualize_charger_path(num_steps=10, time_step=15)
     
     # Show continuous charging demonstration
     print("\nRunning continuous charging visualization...")
@@ -82,12 +85,58 @@ def main():
     
     # Add the enhanced continuous charging visualization
     print("\nRunning enhanced continuous charging visualization...")
-    visualize_enhanced_continuous_charging(
-        num_steps=10,
-        time_step=1,
-        num_sensors=50,
-        path_segments=5
+    # visualize_enhanced_continuous_charging(
+    #     num_steps=10,
+    #     time_step=1,
+    #     num_sensors=50,
+    #     path_segments=5
+    # )
+    
+    # Create an empty path history for the initial visualization
+    # path_history = [(mc.x, mc.y)]  # Start with current position of MC
+    
+    # # Set varied energy levels and consumption rates for visualization
+    # for i, s in enumerate(sensors):
+    #     if i % 5 == 0:  # 20% very low
+    #         s.energy = 0.05 * s.capacity
+    #     elif i % 5 == 1:  # 20% low
+    #         s.energy = 0.2 * s.capacity
+    #     elif i % 5 == 2:  # 20% medium
+    #         s.energy = 0.5 * s.capacity
+            
+    #     # Vary consumption rates to create different priorities
+    #     if i % 3 == 0:  # High consumption
+    #         s.consumption_rate = random.uniform(0.8, 1.5)
+    #     elif i % 3 == 1:  # Medium consumption
+    #         s.consumption_rate = random.uniform(0.4, 0.7)
+    #     else:  # Low consumption
+    #         s.consumption_rate = random.uniform(0.1, 0.3)
+    
+    # # Visualize initial priorities
+    # print("Initial sensor priorities:")
+    # visualize_sensor_priorities(sensors, mc, path_history)
+    
+    
+    # print("\nRunning adaptive continuous charging simulation...")
+    # run_adaptive_continuous_charging(
+    #     num_steps=10,
+    #     time_step=3,
+    #     num_sensors=40,
+    #     path_segments=8
+    # )
+    
+    print("\nRunning adaptive continuous charging with zone-based efficiency...")
+    sensors, mc, path_history = run_adaptive_continuous_charging_with_zones(
+        num_steps=8,
+        time_step=3,
+        num_sensors=40,
+        path_segments=8
     )
+
+    # Visualize final state with complete path and charging zones
+    print("\nFinal network state with complete mobile charger path and charging zones:")
+    visualize_sensor_priorities_with_zones(sensors, mc, path_history)
+    
     
     print("\nSimulation complete!")
 

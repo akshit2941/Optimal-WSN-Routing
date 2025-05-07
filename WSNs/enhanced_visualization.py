@@ -1,12 +1,13 @@
 import matplotlib.pyplot as plt
-import numpy as np
-import random
 from matplotlib.patches import Patch
 from matplotlib.lines import Line2D
-from config import AREA_WIDTH, AREA_HEIGHT, CHARGING_RADIUS
+import numpy as np
+import random
+from config import AREA_WIDTH, AREA_HEIGHT, CHARGING_RADIUS, MC_CAPACITY
 from environment import initialize_environment
 from continuous_charging import move_and_charge_along_path
 from visualization import visualize_charging_heatmap
+from adaptive_charging import calculate_adaptive_priority
 
 def visualize_path_step(sensors, mc, path_x, path_y, charging_events, step, final=False):
     """Helper function to visualize a single step in the charger's path"""
@@ -667,3 +668,219 @@ def visualize_enhanced_continuous_charging(num_steps=20, time_step=1, num_sensor
     
     # Show heatmap of charging activity
     visualize_charging_heatmap(path_x, path_y, charging_events, sensors)
+
+# Add this function to the existing file (at the end)
+
+def visualize_sensor_priorities(sensors, mc, path_history=None):
+    """Visualize sensors with their adaptive priority scores and path history"""
+    plt.figure(figsize=(12, 10))
+    
+    # Import here to avoid circular imports
+    from adaptive_charging import calculate_adaptive_priority
+    
+    # Calculate priorities for all alive sensors
+    sensor_priorities = []
+    for s in sensors:
+        if not s.dead:
+            priority = calculate_adaptive_priority(s, mc)
+            sensor_priorities.append((s, priority))
+    
+    # Normalize priorities for visualization
+    max_priority = max(p for _, p in sensor_priorities) if sensor_priorities else 1.0
+    
+    # Plot sensors with color based on priority
+    for s, priority in sensor_priorities:
+        # Normalize to 0-1 range
+        norm_priority = priority / max_priority
+        
+        # Use color scale: red (high priority) to blue (low priority)
+        color = [norm_priority, 0, 1-norm_priority]
+        size = 50 + norm_priority * 100  # Size also reflects priority
+        
+        plt.scatter(s.x, s.y, c=[color], s=size, alpha=0.7, edgecolors='black')
+        
+        # Show priority score and sensor ID
+        plt.annotate(f"ID:{s.id}\nP:{priority:.2f}", (s.x, s.y), 
+                    xytext=(5, 5), textcoords="offset points", fontsize=8)
+        
+        # Show energy level
+        energy_pct = s.energy / s.capacity * 100
+        plt.annotate(f"{energy_pct:.0f}%", (s.x, s.y), 
+                    xytext=(5, -10), textcoords="offset points", fontsize=7,
+                    color='green' if energy_pct > 50 else 'red')
+    
+    # Plot dead sensors
+    dead_x = [s.x for s in sensors if s.dead]
+    dead_y = [s.y for s in sensors if s.dead]
+    if dead_x:
+        plt.scatter(dead_x, dead_y, c='black', marker='x', s=100, label='Dead Sensors')
+    
+    # Plot MC
+    plt.scatter(mc.x, mc.y, c='blue', marker='X', s=150, label='Mobile Charger')
+    plt.scatter(300, 300, c='black', marker='s', label='Base Station')
+    
+    # Draw charging radius
+    circle = plt.Circle((mc.x, mc.y), CHARGING_RADIUS, color='blue', 
+                       fill=False, linestyle='--', alpha=0.5)
+    plt.gcf().gca().add_artist(circle)
+    
+    # Plot path history if available
+    if path_history and len(path_history) > 1:
+        path_x, path_y = zip(*path_history)
+        plt.plot(path_x, path_y, 'b-', alpha=0.4, linewidth=2, label='MC Path')
+    
+    # Legend
+    from matplotlib.patches import Patch
+    from matplotlib.lines import Line2D
+    legend_elements = [
+        Patch(facecolor='red', edgecolor='black', label='High Priority'),
+        Patch(facecolor='purple', edgecolor='black', label='Medium Priority'),
+        Patch(facecolor='blue', edgecolor='black', label='Low Priority'),
+        Line2D([0], [0], marker='X', color='w', markerfacecolor='blue', markersize=10, label='Mobile Charger')
+    ]
+    plt.legend(handles=legend_elements, loc='upper right')
+    
+    plt.title("Sensor Nodes with Adaptive Priority Visualization")
+    plt.grid(True)
+    plt.xlim(0, AREA_WIDTH)
+    plt.ylim(0, AREA_HEIGHT)
+    plt.show()
+
+def visualize_sensor_priorities_with_zones(sensors, mc, path_history=None):
+    """
+    Visualize sensors with their adaptive priority scores, mobile charger path, and charging zones
+    """
+    plt.figure(figsize=(12, 10))
+    
+    from adaptive_charging import calculate_adaptive_priority
+    
+    # Draw charging zones
+    outer_circle = plt.Circle((mc.x, mc.y), CHARGING_RADIUS, 
+                             color='red', fill=True, alpha=0.1, label="Outer Zone (30%)")
+    middle_circle = plt.Circle((mc.x, mc.y), CHARGING_RADIUS * 0.7, 
+                              color='yellow', fill=True, alpha=0.15, label="Middle Zone (50%)")
+    inner_circle = plt.Circle((mc.x, mc.y), CHARGING_RADIUS * 0.4, 
+                             color='green', fill=True, alpha=0.2, label="Inner Zone (70%)")
+    
+    plt.gcf().gca().add_artist(outer_circle)
+    plt.gcf().gca().add_artist(middle_circle)
+    plt.gcf().gca().add_artist(inner_circle)
+    
+    # Calculate priorities for all alive sensors
+    sensor_priorities = []
+    for s in sensors:
+        if not s.dead:
+            priority = calculate_adaptive_priority(s, mc)
+            sensor_priorities.append((s, priority))
+    
+    # Normalize priorities for visualization
+    max_priority = max(p for _, p in sensor_priorities) if sensor_priorities else 1.0
+    
+    # Plot path history if provided
+    if path_history and len(path_history) > 1:
+        path_x = [p[0] for p in path_history]
+        path_y = [p[1] for p in path_history]
+        
+        # Plot path with gradient to show direction/time
+        for i in range(len(path_history) - 1):
+            # Calculate gradient color (from light to darker blue)
+            alpha = 0.3 + 0.7 * (i / max(1, len(path_history) - 2))
+            color = (0, 0, 0.8, alpha)
+            
+            # Draw line segment with arrow to show direction
+            plt.arrow(path_x[i], path_y[i], 
+                     path_x[i+1] - path_x[i], 
+                     path_y[i+1] - path_y[i],
+                     head_width=10, head_length=10, 
+                     fc=color, ec=color, 
+                     length_includes_head=True,
+                     zorder=2)
+        
+        # Mark visited points along the path
+        plt.scatter(path_x[:-1], path_y[:-1], c='blue', alpha=0.5, 
+                   s=30, marker='o', label='Previous Positions')
+    
+    # Plot sensors with color based on priority
+    for s, priority in sensor_priorities:
+        # Normalize to 0-1 range
+        norm_priority = priority / max_priority
+        
+        # Use color scale: red (high priority) to blue (low priority)
+        color = [norm_priority, 0, 1-norm_priority]
+        size = 50 + norm_priority * 100  # Size also reflects priority
+        
+        plt.scatter(s.x, s.y, c=[color], s=size, alpha=0.7, edgecolors='black', zorder=3)
+        
+        # Show priority score and sensor ID
+        plt.annotate(f"ID:{s.id}\nP:{priority:.2f}", (s.x, s.y), 
+                    xytext=(5, 5), textcoords="offset points", fontsize=8)
+        
+        # Show energy level and consumption rate
+        energy_pct = s.energy / s.capacity * 100
+        plt.annotate(f"{energy_pct:.0f}% | {s.consumption_rate:.1f}J/s", (s.x, s.y), 
+                    xytext=(5, -10), textcoords="offset points", fontsize=7,
+                    color='green' if energy_pct > 50 else 'red')
+    
+    # Determine charging zone for each sensor and annotate
+    for s in sensors:
+        if not s.dead:
+            distance = np.linalg.norm([mc.x - s.x, mc.y - s.y])
+            if distance <= CHARGING_RADIUS:
+                distance_ratio = distance / CHARGING_RADIUS
+                
+                # Determine zone and efficiency
+                if distance_ratio <= 0.4:
+                    eff = "70%"
+                    color = 'green'
+                elif distance_ratio <= 0.7:
+                    eff = "50%"
+                    color = 'gold'
+                else:
+                    eff = "30%"
+                    color = 'red'
+                    
+                # Add charging efficiency label
+                plt.annotate(eff, (s.x, s.y), 
+                            xytext=(0, 15), textcoords="offset points", 
+                            ha='center', color=color, fontweight='bold',
+                            bbox=dict(boxstyle="round,pad=0.1", fc='white', alpha=0.7))
+    
+    # Plot dead sensors
+    dead_x = [s.x for s in sensors if s.dead]
+    dead_y = [s.y for s in sensors if s.dead]
+    if dead_x:
+        plt.scatter(dead_x, dead_y, c='black', marker='x', s=100, label='Dead Sensors')
+    
+    # Plot Mobile Charger and Base Station
+    plt.scatter(mc.x, mc.y, c='blue', marker='X', s=150, label='Mobile Charger', zorder=5)
+    plt.scatter(300, 300, c='black', marker='s', s=100, label='Base Station', zorder=5)
+    
+    # Add information box with MC energy
+    info_text = f"MC Energy: {mc.energy:.0f}J ({mc.energy/MC_CAPACITY:.1%})\n"
+    info_text += f"Alive Sensors: {sum(1 for s in sensors if not s.dead)}/{len(sensors)}\n"
+    info_text += f"Charging Range: {CHARGING_RADIUS}m"
+    
+    plt.annotate(info_text, xy=(0.02, 0.98), xycoords='axes fraction',
+               bbox=dict(boxstyle="round,pad=0.3", fc="white", alpha=0.8),
+               va='top', fontsize=10)
+    
+    # Add charging zone legend
+    legend_elements = [
+        Patch(facecolor='red', edgecolor='black', label='High Priority'),
+        Patch(facecolor='purple', edgecolor='black', label='Medium Priority'),
+        Patch(facecolor='blue', edgecolor='black', label='Low Priority'),
+        Line2D([0], [0], marker='X', color='w', markerfacecolor='blue', markersize=10, label='Mobile Charger'),
+        Line2D([0], [0], color='blue', alpha=0.7, lw=2, label='Charger Path'),
+        Patch(facecolor='green', alpha=0.2, label='Inner Zone (70%)'),
+        Patch(facecolor='yellow', alpha=0.15, label='Middle Zone (50%)'),
+        Patch(facecolor='red', alpha=0.1, label='Outer Zone (30%)')
+    ]
+    
+    plt.legend(handles=legend_elements, loc='upper right')
+    
+    plt.title("Sensor Nodes with Adaptive Priority and Charging Zones")
+    plt.grid(True, alpha=0.3)
+    plt.xlim(0, AREA_WIDTH)
+    plt.ylim(0, AREA_HEIGHT)
+    plt.tight_layout()
+    plt.show()

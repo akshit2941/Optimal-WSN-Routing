@@ -65,7 +65,9 @@ def move_and_charge_along_path(mc, start_point, end_point, sensors, path_segment
 
 
 def charge_while_moving(mc, sensors):
-    """Charge all sensors within radius while the charger is moving"""
+    """
+    Charge all sensors within radius while the charger is moving using zone-based efficiency
+    """
     charged_nodes = []
     total_energy_transferred = 0
     
@@ -73,26 +75,37 @@ def charge_while_moving(mc, sensors):
         return charged_nodes, 0
     
     # Apply a movement efficiency factor (reduced efficiency while moving)
-    # We can adjust this factor based on how effective we want charging-while-moving to be
     movement_efficiency_factor = 0.7  # 70% as effective as stationary charging
     
-    # Check all sensors - this ensures we charge EVERY sensor in range
+    # Check all sensors
     for sensor in sensors:
         if sensor.dead:
             continue
             
         distance = np.linalg.norm([mc.x - sensor.x, mc.y - sensor.y])
-        # Check if sensor is within charging radius, regardless of energy level
+        # Check if sensor is within charging radius
         if distance <= CHARGING_RADIUS:
             needed = sensor.capacity - sensor.energy
             if needed <= 0:
                 continue  # Skip fully charged sensors
                 
-            # Calculate efficiency based on distance + movement penalty
-            base_efficiency = max(0.3, 1 - (distance / CHARGING_RADIUS) * 0.7)
+            # Determine charging zone and efficiency
+            distance_ratio = distance / CHARGING_RADIUS
+            
+            if distance_ratio <= 0.4:  # Inner zone
+                base_efficiency = 0.7  # 70% efficiency
+                zone = "inner"
+            elif distance_ratio <= 0.7:  # Middle zone
+                base_efficiency = 0.5  # 50% efficiency  
+                zone = "middle"
+            else:  # Outer zone
+                base_efficiency = 0.3  # 30% efficiency
+                zone = "outer"
+            
+            # Apply movement penalty to base efficiency
             moving_efficiency = base_efficiency * movement_efficiency_factor
             
-            # Calculate energy to transfer (cap at needed amount or available energy)
+            # Calculate energy to transfer
             max_transfer = min(needed, mc.energy)
             energy_to_transfer = max_transfer * moving_efficiency
             
