@@ -1,5 +1,8 @@
 import numpy as np
 import random
+from enhanced_visualization import visualize_optimal_position
+from environment import initialize_environment
+from sensor_node import SensorNode
 from config import AREA_WIDTH, AREA_HEIGHT, CHARGING_RADIUS, THRESHOLD_RATIO, MOVEMENT_COST_PER_M
 
 def calculate_adaptive_priority(sensor, mc, alpha=0.3, beta=0.2, gamma=0.2, delta=0.3):
@@ -454,15 +457,9 @@ def evaluate_charging_position(x, y, sensors):
 
 def run_optimal_position_simulation(num_steps=10, time_step=3, num_sensors=40):
     """
-    Run a simulation using the optimal position strategy for charging
+    Run a simulation using the optimal position strategy for charging,
+    with zone-based efficiency visualization
     """
-    # Import necessary modules
-    import random
-    import numpy as np
-    from environment import initialize_environment
-    from sensor_node import SensorNode
-    from enhanced_visualization import visualize_sensor_priorities, visualize_optimal_position
-    
     # Set random seed for reproducibility
     random.seed(42)
     np.random.seed(42)
@@ -504,9 +501,9 @@ def run_optimal_position_simulation(num_steps=10, time_step=3, num_sensors=40):
     # Total energy transferred
     total_energy_transferred = 0
     
-    # Visualize initial state
-    print("Initial network state:")
-    visualize_sensor_priorities(sensors, mc, path_history)
+    # Visualize initial state with zone-based visualization
+    print("Initial network state with charging zones:")
+    visualize_optimal_position(sensors, mc, (mc.x, mc.y), [], path_history)  # No optimal position yet
     
     # Run simulation
     for step in range(num_steps):
@@ -553,9 +550,9 @@ def run_optimal_position_simulation(num_steps=10, time_step=3, num_sensors=40):
         for s in sensors:
             s.update_energy(time_step)
         
-        # Visualize after charging
-        print(f"Visualizing network state after step {step+1}...")
-        visualize_sensor_priorities(sensors, mc, path_history)
+        # Visualize after charging with zone-based visualization
+        print(f"Visualizing network state with charging zones after step {step+1}...")
+        visualize_optimal_position(sensors, mc, (mc.x, mc.y), charged_nodes, path_history)
     
     # Final stats
     dead_count = sum(1 for s in sensors if s.dead)

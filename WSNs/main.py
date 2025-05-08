@@ -13,7 +13,8 @@ from reinforcement_learning import DQNAgent, train_dqn, evaluate_agent
 from enhanced_visualization import (
     visualize_charger_path,
     visualize_continuous_charging_path,
-    visualize_enhanced_continuous_charging
+    visualize_enhanced_continuous_charging,
+    visualize_optimal_position
 )
 from adaptive_charging import run_adaptive_continuous_charging, run_optimal_position_simulation, simulate_step_adaptive, run_adaptive_continuous_charging_with_zones
 from enhanced_visualization import visualize_sensor_priorities, visualize_sensor_priorities_with_zones
@@ -125,17 +126,17 @@ def main():
     #     path_segments=8
     # )
     
-    print("\nRunning adaptive continuous charging with zone-based efficiency...")
-    sensors, mc, path_history = run_adaptive_continuous_charging_with_zones(
-        num_steps=8,
-        time_step=3,
-        num_sensors=40,
-        path_segments=8
-    )
+    # print("\nRunning adaptive continuous charging with zone-based efficiency...")
+    # sensors, mc, path_history = run_adaptive_continuous_charging_with_zones(
+    #     num_steps=8,
+    #     time_step=3,
+    #     num_sensors=40,
+    #     path_segments=8
+    # )
 
-    # Visualize final state with complete path and charging zones
-    print("\nFinal network state with complete mobile charger path and charging zones:")
-    visualize_sensor_priorities_with_zones(sensors, mc, path_history)
+    # # Visualize final state with complete path and charging zones
+    # print("\nFinal network state with complete mobile charger path and charging zones:")
+    # visualize_sensor_priorities_with_zones(sensors, mc, path_history)
     
     # Run simulation using the optimal position strategy
     # print("\nRunning simulation with optimal position strategy...")
@@ -149,6 +150,19 @@ def main():
     # print("\nFinal network state with complete mobile charger path and charging zones:")
     # visualize_sensor_priorities_with_zones(sensors, mc, path_history)
     
+    
+    # In main.py, replace the commented-out code with:
+
+    print("\nRunning simulation with optimal position strategy and zone visualization...")
+    sensors, mc, path_history = run_optimal_position_simulation(
+        num_steps=6,      # Fewer steps as this is more computationally intensive
+        time_step=3,
+        num_sensors=40
+    )
+
+    # Show final state with zone visualization
+    print("\nFinal network state with complete mobile charger path and charging zones:")
+    visualize_optimal_position(sensors, mc, (mc.x, mc.y), [], path_history)
     
     
     print("\nSimulation complete!")

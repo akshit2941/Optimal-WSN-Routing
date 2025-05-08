@@ -7,7 +7,7 @@ from config import AREA_WIDTH, AREA_HEIGHT, CHARGING_RADIUS, MC_CAPACITY
 from environment import initialize_environment
 from continuous_charging import move_and_charge_along_path
 from visualization import visualize_charging_heatmap
-from adaptive_charging import calculate_adaptive_priority
+# from adaptive_charging import calculate_adaptive_priority
 
 def visualize_path_step(sensors, mc, path_x, path_y, charging_events, step, final=False):
     """Helper function to visualize a single step in the charger's path"""
@@ -888,91 +888,194 @@ def visualize_sensor_priorities_with_zones(sensors, mc, path_history=None):
 
 def visualize_optimal_position(sensors, mc, optimal_pos, covered_sensors, path_history=None):
     """
-    Visualize the optimal charging position and the sensors that would be covered
+    Visualize the optimal charging position with proper zone visualization (30%, 50%, 70% efficiency)
     """
-    # Use the existing visualization as a base
-    visualize_sensor_priorities(sensors, mc, path_history)
+    plt.figure(figsize=(12, 10))
+    from adaptive_charging import calculate_adaptive_priority
     
-    # Highlight the optimal position
-    opt_x, opt_y = optimal_pos
-    plt.scatter([opt_x], [opt_y], c='gold', marker='*', s=300, 
-               label='Optimal Position', zorder=10, edgecolors='black')
-    
-    # Draw a line from current position to optimal position
-    plt.plot([mc.x, opt_x], [mc.y, opt_y], 'g--', linewidth=2, 
-            label='Planned Movement')
-    
-    # Draw the charging zones from the optimal position with colored fill
-    outer_circle = plt.Circle(optimal_pos, CHARGING_RADIUS, 
+    # Draw charging zones for current MC position
+    outer_circle = plt.Circle((mc.x, mc.y), CHARGING_RADIUS, 
                              color='red', fill=True, alpha=0.1, label="Outer Zone (30%)")
-    middle_circle = plt.Circle(optimal_pos, CHARGING_RADIUS * 0.7, 
+    middle_circle = plt.Circle((mc.x, mc.y), CHARGING_RADIUS * 0.7, 
                               color='yellow', fill=True, alpha=0.15, label="Middle Zone (50%)")
-    inner_circle = plt.Circle(optimal_pos, CHARGING_RADIUS * 0.4, 
+    inner_circle = plt.Circle((mc.x, mc.y), CHARGING_RADIUS * 0.4, 
                              color='green', fill=True, alpha=0.2, label="Inner Zone (70%)")
     
     plt.gcf().gca().add_artist(outer_circle)
     plt.gcf().gca().add_artist(middle_circle)
     plt.gcf().gca().add_artist(inner_circle)
     
-    # Highlight covered sensors
-    covered_x = []
-    covered_y = []
-    for s in sensors:
-        if s.id in covered_sensors:
-            covered_x.append(s.x)
-            covered_y.append(s.y)
+    # Draw charging zones for optimal position
+    opt_x, opt_y = optimal_pos
+    opt_outer_circle = plt.Circle((opt_x, opt_y), CHARGING_RADIUS, 
+                                 color='gold', fill=False, linestyle='--', alpha=0.7)
+    opt_middle_circle = plt.Circle((opt_x, opt_y), CHARGING_RADIUS * 0.7, 
+                                  color='gold', fill=False, linestyle='--', alpha=0.7)
+    opt_inner_circle = plt.Circle((opt_x, opt_y), CHARGING_RADIUS * 0.4, 
+                                 color='gold', fill=False, linestyle='--', alpha=0.7)
     
-    if covered_x:
-        plt.scatter(covered_x, covered_y, facecolors='none', edgecolors='gold', 
-                   s=180, linewidth=2, label='Covered Sensors', zorder=6)
+    plt.gcf().gca().add_artist(opt_outer_circle)
+    plt.gcf().gca().add_artist(opt_middle_circle)
+    plt.gcf().gca().add_artist(opt_inner_circle)
     
-    # Add efficiency predictions for each covered sensor
+    # Calculate priorities for all alive sensors
+    sensor_priorities = []
     for s in sensors:
-        if s.id in covered_sensors:
-            distance = np.linalg.norm([opt_x - s.x, opt_y - s.y])
-            distance_ratio = distance / CHARGING_RADIUS
+        if not s.dead:
+            priority = calculate_adaptive_priority(s, mc)
+            sensor_priorities.append((s, priority))
+    
+    # Normalize priorities for visualization
+    max_priority = max(p for _, p in sensor_priorities) if sensor_priorities else 1.0
+    
+    # Plot path history if provided
+    if path_history and len(path_history) > 1:
+        path_x = [p[0] for p in path_history]
+        path_y = [p[1] for p in path_history]
+        
+        # Plot path with gradient to show direction/time
+        for i in range(len(path_history) - 1):
+            # Calculate gradient color (from light to darker blue)
+            alpha = 0.3 + 0.7 * (i / max(1, len(path_history) - 2))
+            color = (0, 0, 0.8, alpha)
             
-            if distance_ratio <= 0.4:
-                eff = "70%"
-                color = 'green'
-            elif distance_ratio <= 0.7:
-                eff = "50%"
-                color = 'gold'
-            else:
-                eff = "30%"
-                color = 'red'
+            # Draw line segment with arrow to show direction
+            plt.arrow(path_x[i], path_y[i], 
+                     path_x[i+1] - path_x[i], 
+                     path_y[i+1] - path_y[i],
+                     head_width=10, head_length=10, 
+                     fc=color, ec=color, 
+                     length_includes_head=True,
+                     zorder=2)
+        
+        # Mark visited points along the path
+        plt.scatter(path_x[:-1], path_y[:-1], c='blue', alpha=0.5, 
+                   s=30, marker='o', label='Previous Positions')
+    
+    # Draw a line from current position to optimal position
+    plt.plot([mc.x, opt_x], [mc.y, opt_y], 'g--', linewidth=2, 
+            label='Planned Movement')
+    
+    # Plot sensors with color based on priority
+    for s, priority in sensor_priorities:
+        # Normalize to 0-1 range
+        norm_priority = priority / max_priority
+        
+        # Use color scale: red (high priority) to blue (low priority)
+        color = [norm_priority, 0, 1-norm_priority]
+        size = 50 + norm_priority * 100  # Size also reflects priority
+        
+        plt.scatter(s.x, s.y, c=[color], s=size, alpha=0.7, edgecolors='black', zorder=3)
+        
+        # Show priority score and sensor ID
+        plt.annotate(f"ID:{s.id}\nP:{priority:.2f}", (s.x, s.y), 
+                    xytext=(5, 5), textcoords="offset points", fontsize=8)
+        
+        # Show energy level and consumption rate
+        energy_pct = s.energy / s.capacity * 100
+        plt.annotate(f"{energy_pct:.0f}% | {s.consumption_rate:.1f}J/s", (s.x, s.y), 
+                    xytext=(5, -10), textcoords="offset points", fontsize=7,
+                    color='green' if energy_pct > 50 else 'red')
+    
+    # Determine charging zone for each sensor and annotate
+    for s in sensors:
+        if not s.dead:
+            # Current position efficiency
+            distance = np.linalg.norm([mc.x - s.x, mc.y - s.y])
+            if distance <= CHARGING_RADIUS:
+                distance_ratio = distance / CHARGING_RADIUS
                 
-            # Add predicted efficiency label
-            plt.annotate(f"Pred: {eff}", (s.x, s.y), 
-                        xytext=(0, 25), textcoords="offset points", 
-                        ha='center', color=color, fontweight='bold',
-                        bbox=dict(boxstyle="round,pad=0.1", fc='white', alpha=0.7))
+                # Determine zone and efficiency
+                if distance_ratio <= 0.4:
+                    eff = "70%"
+                    color = 'green'
+                elif distance_ratio <= 0.7:
+                    eff = "50%"
+                    color = 'gold'
+                else:
+                    eff = "30%"
+                    color = 'red'
+                    
+                # Add charging efficiency label
+                plt.annotate(eff, (s.x, s.y), 
+                            xytext=(0, 15), textcoords="offset points", 
+                            ha='center', color=color, fontweight='bold',
+                            bbox=dict(boxstyle="round,pad=0.1", fc='white', alpha=0.7))
+            
+            # Highlight covered sensors from optimal position
+            if s.id in covered_sensors:
+                # Calculate efficiency at optimal position
+                distance = np.linalg.norm([opt_x - s.x, opt_y - s.y])
+                distance_ratio = distance / CHARGING_RADIUS
+                
+                if distance_ratio <= 0.4:
+                    eff = "70%"
+                    color = 'green'
+                elif distance_ratio <= 0.7:
+                    eff = "50%"
+                    color = 'gold'
+                else:
+                    eff = "30%"
+                    color = 'red'
+                    
+                # Mark as covered by optimal position
+                plt.scatter(s.x, s.y, facecolors='none', edgecolors='gold', 
+                         s=180, linewidth=2, zorder=6)
+                
+                # Add predicted efficiency from optimal position
+                plt.annotate(f"Opt: {eff}", (s.x, s.y), 
+                            xytext=(0, 30), textcoords="offset points", 
+                            ha='center', color=color, fontweight='bold',
+                            bbox=dict(boxstyle="round,pad=0.1", fc='lightyellow', alpha=0.7))
     
-    # Update legend with zone information
-    handles, labels = plt.gca().get_legend_handles_labels()
+    # Highlight the optimal position
+    plt.scatter([opt_x], [opt_y], c='gold', marker='*', s=300, 
+               label='Optimal Position', zorder=10, edgecolors='black')
     
-    # Add zone patches to legend
+    # Plot dead sensors
+    dead_x = [s.x for s in sensors if s.dead]
+    dead_y = [s.y for s in sensors if s.dead]
+    if dead_x:
+        plt.scatter(dead_x, dead_y, c='black', marker='x', s=100, label='Dead Sensors')
+    
+    # Plot Mobile Charger and Base Station
+    plt.scatter(mc.x, mc.y, c='blue', marker='X', s=150, label='Mobile Charger', zorder=5)
+    plt.scatter(300, 300, c='black', marker='s', s=100, label='Base Station', zorder=5)
+    
+    # Add information box with MC energy
+    info_text = f"MC Energy: {mc.energy:.0f}J ({mc.energy/MC_CAPACITY:.1%})\n"
+    info_text += f"Alive Sensors: {sum(1 for s in sensors if not s.dead)}/{len(sensors)}\n"
+    info_text += f"Sensors in optimal range: {len(covered_sensors)}"
+    
+    plt.annotate(info_text, xy=(0.02, 0.98), xycoords='axes fraction',
+               bbox=dict(boxstyle="round,pad=0.3", fc="white", alpha=0.8),
+               va='top', fontsize=10)
+    
+    # Add zone-based legend
     from matplotlib.patches import Patch
-    zone_patches = [
+    from matplotlib.lines import Line2D
+    
+    legend_elements = [
+        Patch(facecolor='red', edgecolor='black', label='High Priority'),
+        Patch(facecolor='purple', edgecolor='black', label='Medium Priority'),
+        Patch(facecolor='blue', edgecolor='black', label='Low Priority'),
+        Line2D([0], [0], marker='X', color='w', markerfacecolor='blue', markersize=10, label='Mobile Charger'),
+        Line2D([0], [0], marker='*', color='w', markerfacecolor='gold', markersize=15, label='Optimal Position'),
         Patch(facecolor='green', alpha=0.2, label='Inner Zone (70%)'),
         Patch(facecolor='yellow', alpha=0.15, label='Middle Zone (50%)'),
-        Patch(facecolor='red', alpha=0.1, label='Outer Zone (30%)')
+        Patch(facecolor='red', alpha=0.1, label='Outer Zone (30%)'),
+        Line2D([0], [0], color='gold', linestyle='--', lw=2, label='Optimal Zones'),
+        Line2D([0], [0], color='green', linestyle='--', lw=2, label='Planned Movement')
     ]
     
-    handles.extend(zone_patches)
-    labels.extend(['Inner Zone (70%)', 'Middle Zone (50%)', 'Outer Zone (30%)'])
+    if path_history and len(path_history) > 1:
+        legend_elements.append(Line2D([0], [0], color='blue', alpha=0.7, lw=2, label='Charger Path'))
     
-    plt.legend(handles=handles, labels=labels, loc='upper right')
+    plt.legend(handles=legend_elements, loc='upper right')
     
-    # Add information about the optimal position
-    info_text = f"Optimal Position: ({opt_x:.1f}, {opt_y:.1f})\n"
-    info_text += f"Covers {len(covered_sensors)} sensors\n"
-    info_text += f"Movement Distance: {np.linalg.norm([mc.x - opt_x, mc.y - opt_y]):.1f}m"
-    
-    plt.annotate(info_text, xy=(0.02, 0.88), xycoords='axes fraction',
-                bbox=dict(boxstyle="round,pad=0.3", fc="white", alpha=0.8),
-                va='top', fontsize=10)
-    
-    plt.title("Optimal Charging Position Strategy")
+    plt.title("Optimal Charging Position with Zone-Based Efficiency")
+    plt.grid(True, alpha=0.3)
+    plt.xlim(0, AREA_WIDTH)
+    plt.ylim(0, AREA_HEIGHT)
     plt.tight_layout()
     plt.show()
