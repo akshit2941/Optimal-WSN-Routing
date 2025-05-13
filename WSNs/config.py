@@ -3,7 +3,7 @@ AREA_WIDTH = 600
 AREA_HEIGHT = 600
 
 # Sensor and MC Parameters
-NUM_SENSORS = 20
+NUM_SENSORS = 40
 SENSOR_CAPACITY = 10800  # Joules (10.8 kJ)
 MC_CAPACITY = 1000000   # Joules
 MC_SPEED = 5  # m/s

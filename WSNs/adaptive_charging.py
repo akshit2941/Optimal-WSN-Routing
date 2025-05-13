@@ -3,7 +3,7 @@ import random
 from enhanced_visualization import visualize_optimal_position
 from environment import initialize_environment
 from sensor_node import SensorNode
-from config import AREA_WIDTH, AREA_HEIGHT, CHARGING_RADIUS, MC_CAPACITY, NUM_SENSORS, THRESHOLD_RATIO, MOVEMENT_COST_PER_M
+from config import AREA_WIDTH, AREA_HEIGHT, CHARGING_RADIUS, MC_CAPACITY, NUM_SENSORS, SENSOR_CAPACITY, THRESHOLD_RATIO, MOVEMENT_COST_PER_M
 
 def calculate_adaptive_priority(sensor, mc, alpha=0.3, beta=0.2, gamma=0.2, delta=0.3):
     """
@@ -149,11 +149,11 @@ def run_adaptive_continuous_charging(num_steps=15, time_step=3, num_sensors=50, 
     # Set varied energy levels and consumption rates
     for i, s in enumerate(sensors):
         if i % 5 == 0:  # 20% very low
-            s.energy = 0.05 * s.capacity
+            s.energy = 0.05 * SENSOR_CAPACITY
         elif i % 5 == 1:  # 20% low
-            s.energy = 0.2 * s.capacity
+            s.energy = 0.2 * SENSOR_CAPACITY
         elif i % 5 == 2:  # 20% medium
-            s.energy = 0.5 * s.capacity
+            s.energy = 0.5 * SENSOR_CAPACITY
             
         # Vary consumption rates to create different priorities
         if i % 3 == 0:  # High consumption
@@ -260,11 +260,11 @@ def run_adaptive_continuous_charging_with_zones(num_steps=10, time_step=3, num_s
     # Set varied energy levels and consumption rates
     for i, s in enumerate(sensors):
         if i % 5 == 0:  # 20% very low
-            s.energy = 0.05 * s.capacity
+            s.energy = 0.05 * SENSOR_CAPACITY
         elif i % 5 == 1:  # 20% low
-            s.energy = 0.2 * s.capacity
+            s.energy = 0.2 * SENSOR_CAPACITY
         elif i % 5 == 2:  # 20% medium
-            s.energy = 0.5 * s.capacity
+            s.energy = 0.5 * SENSOR_CAPACITY
             
         # Vary consumption rates to create different priorities
         if i % 3 == 0:  # High consumption
@@ -479,13 +479,13 @@ def run_optimal_position_simulation(num_steps=10, time_step=3, num_sensors=40):
     # Set varied energy levels and consumption rates for interesting scenario
     for i, s in enumerate(sensors):
         if i % 5 == 0:  # 20% very low
-            s.energy = 0.05 * s.capacity
+            s.energy = 0.05 * SENSOR_CAPACITY
         elif i % 5 == 1:  # 20% low
-            s.energy = 0.15 * s.capacity
+            s.energy = 0.15 * SENSOR_CAPACITY
         elif i % 5 == 2:  # 20% medium-low
-            s.energy = 0.30 * s.capacity
+            s.energy = 0.30 * SENSOR_CAPACITY
         elif i % 5 == 3:  # 20% medium
-            s.energy = 0.45 * s.capacity
+            s.energy = 0.45 * SENSOR_CAPACITY
         # else: keep random levels for the rest
             
         # Vary consumption rates with more differential
