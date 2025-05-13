@@ -381,10 +381,10 @@ def find_optimal_charging_position(mc, sensors, candidate_sensors=None, grid_siz
             # Reduce movement penalty to make movement less prohibitive
             distance_to_move = np.linalg.norm([mc.x - pos_x, mc.y - pos_y])
             energy_cost = distance_to_move * MOVEMENT_COST_PER_M
-            movement_penalty = min(0.5, energy_cost / 5000)  # Much less severe penalty
+            movement_penalty = min(0.3, energy_cost / 8000)  # Much less severe penalty
             
             # Apply a multiplier for multi-sensor coverage to prefer positions that cover more sensors
-            coverage_bonus = 1.0 + min(0.5, len(covered) * 0.1)  # +10% per sensor up to 50%
+            coverage_bonus = 1.0 + min(1.0, len(covered) * 0.2)  # +10% per sensor up to 50%
             
             # Adjusted score with reduced movement penalty and coverage bonus
             adjusted_score = score * coverage_bonus * (1 - 0.1 * movement_penalty)
