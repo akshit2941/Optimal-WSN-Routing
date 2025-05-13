@@ -7,8 +7,8 @@ class SensorNode:
         self.x = x
         self.y = y
         self.capacity = SENSOR_CAPACITY
-        self.energy = random.uniform(0.1, 1.4) * SENSOR_CAPACITY  # low enough to trigger window
-        self.consumption_rate = random.uniform(0.5, 2.0)  # J/s
+        self.energy = random.uniform(0.1, 1.4) * SENSOR_CAPACITY
+        self.consumption_rate = random.uniform(0.00001, 0.0001)  # Reduced to microjoules/sec range
         self.dead = False
     
     def get_location(self):

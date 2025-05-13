@@ -893,7 +893,7 @@ def visualize_optimal_position(sensors, mc, optimal_pos, covered_sensors, path_h
     plt.figure(figsize=(12, 10))
     from adaptive_charging import calculate_adaptive_priority
     
-    # Draw charging zones for current MC position
+    # Draw charging zones with adjusted proportions for larger radius
     outer_circle = plt.Circle((mc.x, mc.y), CHARGING_RADIUS, 
                              color='red', fill=True, alpha=0.1, label="Outer Zone (30%)")
     middle_circle = plt.Circle((mc.x, mc.y), CHARGING_RADIUS * 0.7, 

@@ -32,7 +32,7 @@ def calculate_adaptive_priority(sensor, mc, alpha=0.3, beta=0.2, gamma=0.2, delt
                                     (sensor.capacity - min_critical_energy))
     
     # 3. Normalize consumption rate (higher rate = higher priority)
-    max_consumption_rate = 2.0
+    max_consumption_rate = 0.0001  # Updated to match new consumption rate range
     consumption_factor = min(sensor.consumption_rate / max_consumption_rate, 1.0)
     
     # 4. Normalize distance (shorter distance = higher priority)
@@ -157,11 +157,11 @@ def run_adaptive_continuous_charging(num_steps=15, time_step=3, num_sensors=50, 
             
         # Vary consumption rates to create different priorities
         if i % 3 == 0:  # High consumption
-            s.consumption_rate = random.uniform(0.8, 1.5)
+            s.consumption_rate = random.uniform(0.00008, 0.0001)
         elif i % 3 == 1:  # Medium consumption
-            s.consumption_rate = random.uniform(0.4, 0.7)
+            s.consumption_rate = random.uniform(0.00004, 0.00007)
         else:  # Low consumption
-            s.consumption_rate = random.uniform(0.1, 0.3)
+            s.consumption_rate = random.uniform(0.00001, 0.00003)
     
     # Path tracking
     path_x = [mc.x]
@@ -268,11 +268,11 @@ def run_adaptive_continuous_charging_with_zones(num_steps=10, time_step=3, num_s
             
         # Vary consumption rates to create different priorities
         if i % 3 == 0:  # High consumption
-            s.consumption_rate = random.uniform(0.8, 1.5)
+            s.consumption_rate = random.uniform(0.00008, 0.0001)
         elif i % 3 == 1:  # Medium consumption
-            s.consumption_rate = random.uniform(0.4, 0.7)
+            s.consumption_rate = random.uniform(0.00004, 0.00007)
         else:  # Low consumption
-            s.consumption_rate = random.uniform(0.1, 0.3)
+            s.consumption_rate = random.uniform(0.00001, 0.00003)
     
     # Path tracking
     total_energy_transferred = 0
@@ -467,8 +467,12 @@ def run_optimal_position_simulation(num_steps=10, time_step=3, num_sensors=40):
     # Initialize environment
     sensors, mc = initialize_environment(num_sensors=num_sensors)
     
-    # Initialize path history
+    # Initialize path history and evaluation metrics
     path_history = [(mc.x, mc.y)]
+    total_energy_transferred = 0
+    total_movement_energy = 0
+    sensors_requested_charging = set()  # Using sets to track unique sensor IDs
+    sensors_received_charging = set()
     
     # Set varied energy levels and consumption rates for interesting scenario
     for i, s in enumerate(sensors):
@@ -481,11 +485,11 @@ def run_optimal_position_simulation(num_steps=10, time_step=3, num_sensors=40):
             
         # Vary consumption rates to create different priorities
         if i % 3 == 0:  # High consumption
-            s.consumption_rate = random.uniform(0.8, 1.5)
+            s.consumption_rate = random.uniform(0.00008, 0.0001)
         elif i % 3 == 1:  # Medium consumption
-            s.consumption_rate = random.uniform(0.4, 0.7)
+            s.consumption_rate = random.uniform(0.00004, 0.00007)
         else:  # Low consumption
-            s.consumption_rate = random.uniform(0.1, 0.3)
+            s.consumption_rate = random.uniform(0.00001, 0.00003)
     
     # Create some clusters of sensors for interesting optimal positions
     # Add 10 more sensors in 2 clusters
@@ -498,9 +502,6 @@ def run_optimal_position_simulation(num_steps=10, time_step=3, num_sensors=40):
         cluster2_y = random.uniform(400, 450)
         sensors.append(SensorNode(num_sensors + i + 5, cluster2_x, cluster2_y))
     
-    # Total energy transferred
-    total_energy_transferred = 0
-    
     # Visualize initial state with zone-based visualization
     print("Initial network state with charging zones:")
     visualize_optimal_position(sensors, mc, (mc.x, mc.y), [], path_history)  # No optimal position yet
@@ -511,6 +512,10 @@ def run_optimal_position_simulation(num_steps=10, time_step=3, num_sensors=40):
         
         # Find sensors that need charging using adaptive threshold
         to_charge = get_sensors_needing_charging(sensors, mc, adaptive_threshold=True)
+        
+        # Track sensors that requested charging
+        for sensor in to_charge:
+            sensors_requested_charging.add(sensor.id)
         
         if not to_charge:
             # Let energy deplete a bit to create need
@@ -528,6 +533,11 @@ def run_optimal_position_simulation(num_steps=10, time_step=3, num_sensors=40):
         print(f"This position would cover {len(covered_sensors)} sensors: {covered_sensors}")
         visualize_optimal_position(sensors, mc, optimal_pos, covered_sensors, path_history)
         
+        # Calculate movement energy
+        distance_to_move = np.linalg.norm([mc.x - optimal_pos[0], mc.y - optimal_pos[1]])
+        movement_energy = distance_to_move * MOVEMENT_COST_PER_M
+        total_movement_energy += movement_energy
+        
         # Move to the optimal position
         if not mc.move_to(optimal_pos[0], optimal_pos[1]):
             print("MC does not have enough energy to move to optimal position.")
@@ -539,6 +549,10 @@ def run_optimal_position_simulation(num_steps=10, time_step=3, num_sensors=40):
         # Charge all sensors within radius from the optimal position
         charged_nodes, total_energy = mc.charge_nodes_in_radius(sensors)
         total_energy_transferred += total_energy
+        
+        # Track which sensors received charging
+        for sensor_id, _, _ in charged_nodes:
+            sensors_received_charging.add(sensor_id)
         
         if charged_nodes:
             print(f"Charged {len(charged_nodes)} sensors with total {total_energy:.2f}J")
@@ -552,7 +566,7 @@ def run_optimal_position_simulation(num_steps=10, time_step=3, num_sensors=40):
         
         # Visualize after charging with zone-based visualization
         print(f"Visualizing network state with charging zones after step {step+1}...")
-        visualize_optimal_position(sensors, mc, (mc.x, mc.y), charged_nodes, path_history)
+        visualize_optimal_position(sensors, mc, (mc.x, mc.y), [s_id for s_id, _, _ in charged_nodes], path_history)
     
     # Final stats
     dead_count = sum(1 for s in sensors if s.dead)
@@ -560,5 +574,30 @@ def run_optimal_position_simulation(num_steps=10, time_step=3, num_sensors=40):
     print(f"Total energy transferred: {total_energy_transferred:.1f}J")
     print(f"Sensors dead: {dead_count} out of {len(sensors)}")
     print(f"MC remaining energy: {mc.energy:.1f}J")
+    
+    # Calculate and display evaluation metrics
+    print("\n--- Evaluation Metrics ---")
+    
+    # Survival Rate
+    if len(sensors_requested_charging) > 0:
+        survival_rate = len(sensors_received_charging) / len(sensors_requested_charging)
+        print(f"Survival Rate: {survival_rate:.2f} ({len(sensors_received_charging)}/{len(sensors_requested_charging)})")
+    else:
+        print("Survival Rate: N/A (no sensors requested charging)")
+    
+    # Energy Efficiency
+    total_energy_cost = total_movement_energy + total_energy_transferred
+    if total_energy_cost > 0:
+        energy_efficiency = total_energy_transferred / total_energy_cost
+        print(f"Energy Efficiency: {energy_efficiency:.2f}")
+        print(f"  - Energy received by sensors: {total_energy_transferred:.1f}J")
+        print(f"  - Movement energy cost: {total_movement_energy:.1f}J")
+        print(f"  - Total energy used: {total_energy_cost:.1f}J")
+    else:
+        print("Energy Efficiency: N/A (no energy was expended)")
+    
+    # Display unique sensors charged
+    print(f"Unique sensors that requested charging: {sorted(list(sensors_requested_charging))}")
+    print(f"Unique sensors that received charging: {sorted(list(sensors_received_charging))}")
     
     return sensors, mc, path_history
