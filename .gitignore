@@ -1,2 +1,2 @@
 # Ignore Jupyter Notebook checkpoints
-**/*.ipynb
+*.ipynb
