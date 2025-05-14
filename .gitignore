@@ -1,3 +1,5 @@
 # Ignore Jupyter Notebook checkpoints
 *.ipynb
-/WSN-test
+/WSN-test/
+**/WSN-test/
+**/*.ipynb
