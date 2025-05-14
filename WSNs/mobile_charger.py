@@ -71,7 +71,7 @@ class MobileCharger:
                     sensor.charge(energy_to_transfer)
                     self.energy -= energy_to_transfer
                     total_energy_transferred += energy_to_transfer
-                    charged_nodes.append((sensor.id, zone, efficiency))
+                    charged_nodes.append((sensor.id, efficiency))
                     
                     if self.energy <= 0:
                         break
