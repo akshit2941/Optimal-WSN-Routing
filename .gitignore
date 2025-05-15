@@ -3,3 +3,4 @@
 /WSN-test/
 **/WSN-test/
 **/*.ipynb
+/__pycache__/

@@ -119,7 +119,7 @@ def find_optimal_charging_position(mc, sensors, candidate_sensors=None, grid_siz
             movement_penalty = min(0.3, energy_cost / (MC_CAPACITY * 0.008))
             
             # Apply coverage bonus based on number of sensors covered
-            coverage_bonus = 1.0 + min(1.0, len(covered) * 0.2)
+            coverage_bonus = 1.0 + min(1.5, len(covered) * 0.3)
             
             # Adjusted score with reduced movement penalty and coverage bonus
             adjusted_score = score * coverage_bonus * (1 - 0.1 * movement_penalty)
@@ -182,7 +182,7 @@ def evaluate_charging_position(x, y, sensors):
     # Apply a nonlinear scaling for multiple covered sensors
     coverage_multiplier = 1.0
     if len(covered_sensors) > 1:
-        coverage_multiplier = len(covered_sensors) ** 1.2  # Superlinear scaling
+        coverage_multiplier = len(covered_sensors) ** 1.5  # Superlinear scaling
     
     return total_score * coverage_multiplier, covered_sensors
 
@@ -210,6 +210,11 @@ def run_optimal_position_simulation(num_steps=10, time_step=3, num_sensors=NUM_S
     total_movement_energy = 0
     sensors_requested_charging = set()
     sensors_received_charging = set()
+    
+    # Initialize additional metrics for charging delay
+    sensors_request_times = {}  # Stores when each sensor first requested charging {sensor_id: time}
+    sensors_charged_times = {}  # Stores when each sensor was first charged {sensor_id: time}
+    current_time = 0  # Track simulation time
     
     # Set varied energy levels using thresholds from config
     for i, s in enumerate(sensors):
@@ -243,9 +248,11 @@ def run_optimal_position_simulation(num_steps=10, time_step=3, num_sensors=NUM_S
         # Get sensors that need charging
         to_charge = get_sensors_needing_charging(sensors, mc, adaptive_threshold=True)
         
-        # Track sensors that requested charging
+        # Track sensors that requested charging, along with their request time
         for sensor in to_charge:
-            sensors_requested_charging.add(sensor.id)
+            if sensor.id not in sensors_requested_charging:
+                sensors_requested_charging.add(sensor.id)
+                sensors_request_times[sensor.id] = current_time
         
         if not to_charge:
             # Fast-forward time when no charging needed - use MC_SPEED to scale
@@ -277,45 +284,46 @@ def run_optimal_position_simulation(num_steps=10, time_step=3, num_sensors=NUM_S
         # Calculate total energy needed for round trip
         total_energy_needed = energy_to_target + est_charging_energy + energy_to_return_to_base
         
-        print(f"Energy analysis:")
-        print(f"  - Current energy: {mc.energy:.1f}J")
-        print(f"  - Energy to target: {energy_to_target:.1f}J")
-        print(f"  - Estimated charging energy: {est_charging_energy:.1f}J")
-        print(f"  - Energy to return to base: {energy_to_return_to_base:.1f}J")
-        print(f"  - Total energy needed: {total_energy_needed:.1f}J")
+        # print(f"Energy analysis:")
+        # print(f"  - Current energy: {mc.energy:.1f}J")
+        # print(f"  - Energy to target: {energy_to_target:.1f}J")
+        # print(f"  - Estimated charging energy: {est_charging_energy:.1f}J")
+        # print(f"  - Energy to return to base: {energy_to_return_to_base:.1f}J")
+        # print(f"  - Total energy needed: {total_energy_needed:.1f}J")
         
-        # Check if we have enough energy for the round trip
+        # Modify the base station return logic:
+        base_return_threshold = RETURN_THRESHOLD_RATIO * MC_CAPACITY
         if mc.energy < total_energy_needed:
-            print(f"⚠️ Not enough energy for complete mission. Returning to base first...")
-            
-            # Calculate energy to base
+            # Check if worth charging at current position before returning
             distance_to_base = np.linalg.norm([mc.x - base_station_x, mc.y - base_station_y])
-            energy_to_base = distance_to_base * MOVEMENT_COST_PER_M
+            energy_needed_for_safe_return = distance_to_base * MOVEMENT_COST_PER_M * 1.2  # 20% safety margin
             
-            if mc.energy < energy_to_base:
-                print("CRITICAL: Not enough energy to return to base!")
-                # Move as far as possible toward base
-                # [Emergency movement code...]
-            
-            # Move to base station
-            print(f"Moving to base station ({base_station_x}, {base_station_y})...")
-            mc.move_to(base_station_x, base_station_y)
-            total_movement_energy += energy_to_base
-            
-            # Add base station visit to path history
-            path_history.append((base_station_x, base_station_y))
-            
-            # Recharge
-            previous_energy = mc.energy
-            mc.energy = MC_CAPACITY
-            print(f"MC recharged at base station: {previous_energy:.1f}J → {mc.energy:.1f}J")
-            
-            # Now move to the optimal position from base
-            print(f"Moving to optimal position {optimal_pos}...")
-            distance_from_base = np.linalg.norm([base_station_x - optimal_pos[0], base_station_y - optimal_pos[1]])
-            energy_from_base = distance_from_base * MOVEMENT_COST_PER_M
-            mc.move_to(optimal_pos[0], optimal_pos[1])
-            total_movement_energy += energy_from_base
+            # If we have enough energy for some charging and safe return, do a partial mission
+            if mc.energy > energy_needed_for_safe_return + (est_charging_energy * 0.5):
+                print(f"⚠️ Partially charging before return - enough energy for charging and safe return.")
+                # Move to position, charge, then return
+                mc.move_to(optimal_pos[0], optimal_pos[1])
+                charged_nodes, energy_transferred = mc.charge_nodes_in_radius(sensors)
+                total_energy_transferred += energy_transferred
+                # Then ensure return to base
+                distance_to_base = np.linalg.norm([mc.x - base_station_x, mc.y - base_station_y])
+                energy_to_base = distance_to_base * MOVEMENT_COST_PER_M
+                mc.move_to(base_station_x, base_station_y)
+                total_movement_energy += energy_to_base
+                path_history.append((base_station_x, base_station_y))
+                previous_energy = mc.energy
+                mc.energy = MC_CAPACITY
+                print(f"MC recharged at base station: {previous_energy:.1f}J → {mc.energy:.1f}J")
+            else:
+                print(f"⚠️ Not enough energy for charging mission. Returning to base first...")
+                distance_to_base = np.linalg.norm([mc.x - base_station_x, mc.y - base_station_y])
+                energy_to_base = distance_to_base * MOVEMENT_COST_PER_M
+                mc.move_to(base_station_x, base_station_y)
+                total_movement_energy += energy_to_base
+                path_history.append((base_station_x, base_station_y))
+                previous_energy = mc.energy
+                mc.energy = MC_CAPACITY
+                print(f"MC recharged at base station: {previous_energy:.1f}J → {mc.energy:.1f}J")
         else:
             # Enough energy for round trip, proceed normally
             print(f"✓ Sufficient energy for complete mission. Moving to optimal position...")
@@ -329,12 +337,21 @@ def run_optimal_position_simulation(num_steps=10, time_step=3, num_sensors=NUM_S
         charged_nodes, energy_transferred = mc.charge_nodes_in_radius(sensors)
         total_energy_transferred += energy_transferred
 
-        # Track which sensors received charging
+        # Track which sensors received charging, along with charge time
         for charged_item in charged_nodes:
             if isinstance(charged_item, tuple):
-                sensors_received_charging.add(charged_item[0])  # First item is sensor ID
+                sensor_id = charged_item[0]  # First item is sensor ID
             else:
-                sensors_received_charging.add(charged_item)
+                sensor_id = charged_item
+                
+            sensors_received_charging.add(sensor_id)
+            
+            # Record the time when sensor was first charged (if it hasn't been charged before)
+            if sensor_id not in sensors_charged_times:
+                sensors_charged_times[sensor_id] = current_time
+
+        # Update simulation time
+        current_time += time_step
 
         # Update sensor energy levels for this time step
         for s in sensors:
@@ -366,7 +383,18 @@ def run_optimal_position_simulation(num_steps=10, time_step=3, num_sensors=NUM_S
     average_energy = sum(s.energy for s in sensors if not s.dead) / max(1, alive_sensors)
     average_energy_pct = average_energy / SENSOR_CAPACITY * 100
 
-    # Return metrics
+    # Calculate average charging delay
+    charging_delays = []
+    for sensor_id in sensors_received_charging:
+        if sensor_id in sensors_request_times and sensor_id in sensors_charged_times:
+            delay = sensors_charged_times[sensor_id] - sensors_request_times[sensor_id]
+            charging_delays.append(delay)
+    
+    avg_charging_delay = 0
+    if charging_delays:
+        avg_charging_delay = sum(charging_delays) / len(charging_delays)
+    
+    # Return metrics including the new delay metric
     metrics = {
         "survival_rate": survival_rate,
         "energy_efficiency": energy_efficiency,
@@ -375,7 +403,9 @@ def run_optimal_position_simulation(num_steps=10, time_step=3, num_sensors=NUM_S
         "total_energy_transferred": total_energy_transferred,
         "total_movement_energy": total_movement_energy,
         "sensors_requested": sensors_requested,
-        "sensors_received": sensors_received
+        "sensors_received": sensors_received,
+        "avg_charging_delay": avg_charging_delay,
+        "charging_delays": charging_delays  # Include individual delays for detailed analysis
     }
 
     return sensors, mc, path_history, metrics

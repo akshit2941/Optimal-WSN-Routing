@@ -10,15 +10,15 @@ MC_SPEED = 5  # m/s
 CHARGING_RATE = 4.8  # Joules per second
 MOVEMENT_COST_PER_M = 60  # Joules per meter
 THRESHOLD_RATIO = 0.2    # Time window opens when energy < 20% of capacity
-CHARGING_RADIUS = 50     # Radius in meters (increased from 2.8 to provide "good range")
+CHARGING_RADIUS = 60     # Radius in meters (increased from 2.8 to provide "good range")
 
 
 CRITICAL_ENERGY_RATIO = 0.03  
 CHARGING_INNER_ZONE = 0.4
 CHARGING_MIDDLE_ZONE = 0.7
-INNER_EFFICIENCY = 0.7
-MIDDLE_EFFICIENCY = 0.5
-OUTER_EFFICIENCY = 0.3
+INNER_EFFICIENCY = 0.8
+MIDDLE_EFFICIENCY = 0.6
+OUTER_EFFICIENCY = 0.4
 GRID_SEARCH_SIZE = 30
 CHARGING_SEARCH_EXPANSION = 1.2
 MIN_PRIORITY_THRESHOLD = 0.15

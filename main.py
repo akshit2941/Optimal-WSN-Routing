@@ -114,5 +114,15 @@ def main():
     print(f"  - Movement energy cost: {metrics['total_movement_energy']:.1f}J")
     print(f"  - Total energy used: {metrics['total_energy_transferred'] + metrics['total_movement_energy']:.1f}J")
 
+    # Add the new charging delay metric
+    print(f"Average Charging Delay: {metrics['avg_charging_delay']:.1f} seconds")
+    if metrics['charging_delays']:
+        print(f"  - Min delay: {min(metrics['charging_delays']):.1f}s")
+        print(f"  - Max delay: {max(metrics['charging_delays']):.1f}s")
+        if len(metrics['charging_delays']) > 1:
+            sorted_delays = sorted(metrics['charging_delays'])
+            median_delay = sorted_delays[len(sorted_delays)//2]
+            print(f"  - Median delay: {median_delay:.1f}s")
+
 if __name__ == "__main__":
     main()
