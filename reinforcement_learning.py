@@ -16,16 +16,32 @@ from environment import (
 from config import NUM_SENSORS, MC_CAPACITY
 
 class QNetwork(nn.Module):
-    def __init__(self, state_size, action_size, hidden_dim=128):
+    def __init__(self, state_size, action_size, hidden_dim=256):  # Increased from 128 to 256
         super(QNetwork, self).__init__()
         self.fc1 = nn.Linear(state_size, hidden_dim)
+        self.bn1 = nn.BatchNorm1d(hidden_dim)  # Add batch normalization
         self.fc2 = nn.Linear(hidden_dim, hidden_dim)
-        self.out = nn.Linear(hidden_dim, action_size)
+        self.bn2 = nn.BatchNorm1d(hidden_dim)
+        self.fc3 = nn.Linear(hidden_dim, hidden_dim//2)  # Additional layer
+        self.bn3 = nn.BatchNorm1d(hidden_dim//2)
+        self.advantage = nn.Linear(hidden_dim//2, action_size)  # Dueling architecture
+        self.value = nn.Linear(hidden_dim//2, 1)  # Dueling architecture
 
     def forward(self, x):
-        x = F.relu(self.fc1(x))
-        x = F.relu(self.fc2(x))
-        return self.out(x)
+        # Apply batch norm only during training (when batch size > 1)
+        if x.shape[0] > 1:
+            x = F.leaky_relu(self.bn1(self.fc1(x)))  # Leaky ReLU instead of ReLU
+            x = F.leaky_relu(self.bn2(self.fc2(x)))
+            x = F.leaky_relu(self.bn3(self.fc3(x)))
+        else:
+            x = F.leaky_relu(self.fc1(x))
+            x = F.leaky_relu(self.fc2(x))
+            x = F.leaky_relu(self.fc3(x))
+            
+        advantage = self.advantage(x)
+        value = self.value(x)
+        # Combine value and advantage (dueling architecture)
+        return value + (advantage - advantage.mean(dim=1, keepdim=True))
 
 class ReplayBuffer:
     def __init__(self, capacity=10000):
@@ -49,8 +65,68 @@ class ReplayBuffer:
     def __len__(self):
         return len(self.buffer)
 
+class PrioritizedReplayBuffer:
+    def __init__(self, capacity=10000, alpha=0.6, beta=0.4, beta_increment=0.001):
+        self.buffer = []
+        self.capacity = capacity
+        self.priorities = np.zeros((capacity,), dtype=np.float32)
+        self.position = 0
+        self.size = 0
+        self.alpha = alpha  # Priority exponent
+        self.beta = beta    # Importance sampling weight
+        self.beta_increment = beta_increment
+        self.max_priority = 1.0
+        
+    def push(self, state, action, reward, next_state, done):
+        max_priority = self.max_priority if self.size > 0 else 1.0
+        
+        if self.size < self.capacity:
+            self.buffer.append((state, action, reward, next_state, done))
+            self.size += 1
+        else:
+            self.buffer[self.position] = (state, action, reward, next_state, done)
+        
+        # New experiences get max priority to ensure they're sampled
+        self.priorities[self.position] = max_priority
+        self.position = (self.position + 1) % self.capacity
+        
+    def sample(self, batch_size):
+        if self.size < batch_size:
+            indices = np.random.choice(self.size, batch_size, replace=True)
+        else:
+            # Prioritized sampling
+            priorities = self.priorities[:self.size] ** self.alpha
+            probabilities = priorities / priorities.sum()
+            indices = np.random.choice(self.size, batch_size, p=probabilities)
+        
+        # Importance sampling weights
+        weights = (self.size * probabilities[indices]) ** (-self.beta)
+        weights /= weights.max()  # Normalize
+        self.beta = min(1.0, self.beta + self.beta_increment)  # Increase beta
+        
+        samples = [self.buffer[idx] for idx in indices]
+        states, actions, rewards, next_states, dones = map(np.array, zip(*samples))
+        
+        return (
+            torch.tensor(states, dtype=torch.float32),
+            torch.tensor(actions, dtype=torch.long),
+            torch.tensor(rewards, dtype=torch.float32),
+            torch.tensor(next_states, dtype=torch.float32),
+            torch.tensor(dones, dtype=torch.float32),
+            torch.tensor(weights, dtype=torch.float32),
+            indices
+        )
+    
+    def update_priorities(self, indices, td_errors):
+        for idx, error in zip(indices, td_errors):
+            self.priorities[idx] = min(error + 1e-5, 1000)  # Small epsilon to prevent 0 priority
+            self.max_priority = max(self.max_priority, self.priorities[idx])
+            
+    def __len__(self):
+        return self.size
+
 class DQNAgent:
-    def __init__(self, state_size, action_size, lr=1e-3, gamma=0.9, epsilon=1.0, epsilon_min=0.1, epsilon_decay=0.995):
+    def __init__(self, state_size, action_size, lr=1e-3, gamma=0.99, epsilon=1.0, epsilon_min=0.1, epsilon_decay=0.995):
         self.state_size = state_size
         self.action_size = action_size
         self.gamma = gamma
@@ -63,8 +139,14 @@ class DQNAgent:
         self.target_network.load_state_dict(self.q_network.state_dict())  # sync weights
 
         self.optimizer = torch.optim.Adam(self.q_network.parameters(), lr=lr)
+        
+        # Add learning rate scheduler
+        self.scheduler = torch.optim.lr_scheduler.ReduceLROnPlateau(
+            self.optimizer, mode='max', factor=0.5, patience=5, verbose=True
+        )
+
         self.loss_fn = nn.MSELoss()
-        self.replay_buffer = ReplayBuffer()
+        self.replay_buffer = PrioritizedReplayBuffer()
 
     def act(self, state, valid_actions):
         if np.random.rand() < self.epsilon:
@@ -85,20 +167,43 @@ class DQNAgent:
         if len(self.replay_buffer) < batch_size:
             return
 
-        states, actions, rewards, next_states, dones = self.replay_buffer.sample(batch_size)
+        # Get batch with importance sampling weights
+        states, actions, rewards, next_states, dones, weights, indices = self.replay_buffer.sample(batch_size)
 
-        # Compute target Q-values
+        # Compute target Q-values with double DQN
         with torch.no_grad():
-            next_q_vals = self.target_network(next_states).max(1)[0]
+            # Get actions from policy network
+            next_q_policy = self.q_network(next_states)
+            next_actions = next_q_policy.max(1)[1].unsqueeze(1)
+            
+            # Get Q-values from target network for those actions
+            next_q_target = self.target_network(next_states)
+            next_q_vals = next_q_target.gather(1, next_actions).squeeze()
+            
             targets = rewards + (1 - dones) * self.gamma * next_q_vals
 
+        # Compute current Q-values
         current_q_vals = self.q_network(states).gather(1, actions.unsqueeze(1)).squeeze()
 
-        loss = self.loss_fn(current_q_vals, targets)
+        # Compute TD errors for prioritized replay
+        td_errors = torch.abs(targets - current_q_vals).detach().cpu().numpy()
+        
+        # Update priorities
+        self.replay_buffer.update_priorities(indices, td_errors)
+        
+        # Compute weighted loss
+        losses = F.smooth_l1_loss(current_q_vals, targets, reduction='none')
+        loss = (losses * weights).mean()
 
         self.optimizer.zero_grad()
         loss.backward()
+        torch.nn.utils.clip_grad_norm_(self.q_network.parameters(), 1.0)  # Gradient clipping
         self.optimizer.step()
+
+        # Step the scheduler
+        self.scheduler.step(loss)
+
+        return loss.item()
 
     def update_target_network(self):
         self.target_network.load_state_dict(self.q_network.state_dict())
@@ -177,7 +282,12 @@ def train_dqn(agent, episodes=500, max_steps=200, batch_size=64, target_update=1
                         s.update_energy(30)  # larger step to apply Fix 2
 
                     dead_after = count_dead_sensors(sensors)
-                    base_reward = calculate_reward(dead_before, dead_after, distance)
+                    
+                    # Calculate next_state BEFORE using it in calculate_reward
+                    next_state = get_state_vector(sensors, mc)
+                    
+                    # Now we can use next_state in calculate_reward
+                    base_reward = calculate_reward(state, next_state, action, mc, sensors)
                     
                     # Bonus for charging multiple nodes
                     multi_charge_bonus = 0
@@ -189,8 +299,6 @@ def train_dqn(agent, episodes=500, max_steps=200, batch_size=64, target_update=1
                     # Update the dead count
                     dead_before = dead_after
                     done = mc.energy <= 0 or dead_after == NUM_SENSORS
-
-                next_state = get_state_vector(sensors, mc)
 
             # Store and train
             agent.replay_buffer.push(state, action, reward, next_state, done)
@@ -263,12 +371,12 @@ def evaluate_agent(agent, episodes=5, max_steps=200, time_step=30):
                         s.update_energy(time_step)
 
                     dead_after = count_dead_sensors(sensors)
-                    reward = calculate_reward(dead_before, dead_after, distance)
+                    next_state = get_state_vector(sensors, mc)
+
+                    # Use the updated calculate_reward function
+                    reward = calculate_reward(state, next_state, action, mc, sensors)
                     if charged > 0:
                         reward += 15.0
-
-                    dead_before = dead_after
-                    next_state = get_state_vector(sensors, mc)
 
             state = next_state
             total_reward += reward

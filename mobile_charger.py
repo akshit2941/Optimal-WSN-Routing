@@ -7,12 +7,21 @@ class MobileCharger:
         self.y = base_y
         self.energy = MC_CAPACITY
         self.start_pos = (base_x, base_y)
+        # Add tracking of previous position
+        self.previous_x = base_x
+        self.previous_y = base_y
 
     def move_to(self, x, y):
         distance = np.linalg.norm([self.x - x, self.y - y])
         cost = distance * MOVEMENT_COST_PER_M
         if self.energy < cost:
             return False  # not enough energy to move
+        
+        # Store previous position before updating
+        self.previous_x = self.x
+        self.previous_y = self.y
+        
+        # Update position
         self.x, self.y = x, y
         self.energy -= cost
         return True

@@ -106,6 +106,14 @@ def main():
     if metrics['sensors_requested']:
         print(f"  - Sensors that requested charging: {metrics['sensors_requested']}")
         print(f"  - Sensors that received charging: {metrics['sensors_received']}")
+        
+        # Add this section to show sensors that were neglected
+        neglected_sensors = set(metrics['sensors_requested']) - set(metrics['sensors_received'])
+        if neglected_sensors:
+            print(f"  - Sensors that requested but DIDN'T receive charging: {sorted(list(neglected_sensors))}")
+            print(f"  - Neglected sensors count: {len(neglected_sensors)} ({len(neglected_sensors)/len(metrics['sensors_requested'])*100:.1f}% of requests)")
+        else:
+            print("  - All requested sensors were successfully charged!")
     else:
         print("  - No sensors requested charging")
 

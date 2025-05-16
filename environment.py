@@ -2,7 +2,7 @@ import random
 import numpy as np
 from sensor_node import SensorNode
 from mobile_charger import MobileCharger
-from config import AREA_WIDTH, AREA_HEIGHT, NUM_SENSORS, MC_CAPACITY
+from config import AREA_WIDTH, AREA_HEIGHT, NUM_SENSORS, MC_CAPACITY, MOVEMENT_COST_PER_M
 
 def initialize_environment(num_sensors=NUM_SENSORS):
     sensors = []
@@ -61,14 +61,54 @@ def explain_action(action):
 def count_dead_sensors(sensors):
     return sum(1 for s in sensors if s.dead)
 
-def calculate_reward(prev_dead_count, curr_dead_count, distance_moved, charged=False):
-    move_penalty = - (distance_moved / 100)  # less harsh (dividing by 100 not 10)
-
-    new_deaths = curr_dead_count - prev_dead_count
-    death_penalty = new_deaths * -50  # keep this harsh
-
-    charge_bonus = 0
-    if charged:
-        charge_bonus = 10  # strong positive signal when it charges
-
-    return move_penalty + death_penalty + charge_bonus
+def calculate_reward(prev_state, next_state, action, mc, sensors):
+    """
+    Enhanced reward function that considers charging efficiency
+    """
+    # Extract meaningful metrics from states
+    prev_sensor_energy = sum(s.energy for s in sensors if not s.dead)
+    next_sensor_energy = sum(s.energy for s in sensors if not s.dead)
+    
+    # Energy transferred to sensors
+    energy_transferred = max(0, next_sensor_energy - prev_sensor_energy)
+    
+    # Energy used for movement (distance × movement cost)
+    movement_distance = np.linalg.norm([mc.previous_x - mc.x, mc.y - mc.previous_y])
+    movement_energy = MOVEMENT_COST_PER_M * movement_distance
+    
+    # Calculate different reward components
+    
+    # 1. Basic charging reward (positive reinforcement)
+    charging_reward = energy_transferred * 0.01  # Scale factor
+    
+    # 2. Efficiency reward (energy transferred / energy used for movement)
+    efficiency_reward = 0
+    if movement_energy > 0:
+        efficiency_ratio = energy_transferred / movement_energy
+        efficiency_reward = min(efficiency_ratio * 10, 50)  # Cap at 50
+    
+    # 3. Death penalty (heavily penalize sensor deaths)
+    prev_dead = sum(1 for s in sensors if s.dead)
+    curr_dead = sum(1 for s in sensors if s.dead)
+    death_penalty = (curr_dead - prev_dead) * -100  # Severe penalty for deaths
+    
+    # 4. Critical rescue bonus (reward for saving sensors close to death)
+    critical_rescue_bonus = 0
+    for s in sensors:
+        if not s.dead and s.energy < 0.05 * s.capacity:  # Very low energy
+            # If it was charged during this step
+            if hasattr(s, 'previous_energy') and s.energy > s.previous_energy:
+                critical_rescue_bonus += 25  # Big bonus for saving critical sensors
+    
+    # 5. Return-to-base reward (when appropriate)
+    base_reward = 0
+    if action == NUM_SENSORS:  # Return to base action
+        if mc.energy < 0.2 * MC_CAPACITY:  # Low energy
+            base_reward = 15  # Good decision to return
+        else:
+            base_reward = -5  # Unnecessary return
+    
+    # Combine all reward components
+    total_reward = charging_reward + efficiency_reward + death_penalty + critical_rescue_bonus + base_reward
+    
+    return total_reward
