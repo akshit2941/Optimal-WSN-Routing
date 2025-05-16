@@ -97,9 +97,18 @@ def main():
     print("\n--- Network Health Statistics ---")
     print(f"Sensors alive: {metrics['alive_ratio']*len(sensors):.0f}/{len(sensors)} ({metrics['alive_ratio']*100:.1f}%)")
     print(f"Sensors dead: {len(sensors) - metrics['alive_ratio']*len(sensors):.0f}/{len(sensors)} ({(1-metrics['alive_ratio'])*100:.1f}%)")
+    print(f"Life-Survival Ratio: {metrics['life_survival_ratio']:.4f}")
     print(f"Average energy of alive sensors: {metrics['average_energy']:.1f}J ({metrics['average_energy']/SENSOR_CAPACITY*100:.1f}%)")
     print(f"Mobile charger final energy: {mc.energy:.1f}J ({mc.energy/MC_CAPACITY*100:.1f}%)")
     print(f"Total positions visited: {len(path_history)}")
+
+    # Add this to the Network Health Statistics section:
+    if "life_survival_ratio_lifetime" in metrics:
+        print(f"Life-Survival Ratio (Lifetime): {metrics['life_survival_ratio_lifetime']:.2f}x")
+        print(f"  - Network lifetime with charging: {metrics.get('current_time', 0.0):.1f}s")
+        baseline_lifetime = metrics.get('baseline_lifetime', 0.0)
+        print(f"  - Est. network lifetime without charging: {baseline_lifetime:.1f}s")
+
 
     print("\n--- Charging Performance Metrics ---")
     print(f"Survival Rate: {metrics['survival_rate']:.2f} ({len(metrics['sensors_received'])}/{len(metrics['sensors_requested'])})")

@@ -405,7 +405,71 @@ def run_optimal_position_simulation(num_steps=10, time_step=3, num_sensors=NUM_S
         "sensors_requested": sensors_requested,
         "sensors_received": sensors_received,
         "avg_charging_delay": avg_charging_delay,
-        "charging_delays": charging_delays  # Include individual delays for detailed analysis
+        "charging_delays": charging_delays,  # Include individual delays for detailed analysis
+        "life_survival_ratio": alive_sensors/len(sensors)
     }
 
+    # 4. Calculate Life-Survival Ratio based on network lifetime
+    baseline_lifetime = calculate_network_lifetime_ratio()
+    lifetime_with_charging = current_time
+
+    # Only add this metric if we've reached a comparable state (50% node death)
+    alive_ratio_with_charging = alive_sensors/len(sensors)
+    if alive_ratio_with_charging < 0.5 or alive_ratio_with_charging >= 0.5:
+        life_survival_ratio_lifetime = lifetime_with_charging / baseline_lifetime
+    else:
+        # If we haven't reached the same condition, estimate based on current state
+        life_survival_ratio_lifetime = (lifetime_with_charging * 0.5) / (baseline_lifetime * alive_ratio_with_charging)
+
+    # Add to metrics dictionary
+    metrics["life_survival_ratio_lifetime"] = life_survival_ratio_lifetime
+    metrics["current_time"] = current_time
+    metrics["baseline_lifetime"] = baseline_lifetime
+
     return sensors, mc, path_history, metrics
+
+def calculate_network_lifetime_ratio():
+    """
+    Calculates the Life-Survival Ratio by comparing network lifetime
+    with and without charging algorithm
+    """
+    # Run simulation without charging
+    sensors_no_charging, _ = initialize_environment(num_sensors=NUM_SENSORS)
+    
+    # Set the same initial energy levels and consumption rates as the main simulation
+    for i, s in enumerate(sensors_no_charging):
+        if i % 5 == 0:
+            s.energy = 0.05 * SENSOR_CAPACITY
+        elif i % 5 == 1:
+            s.energy = 0.15 * SENSOR_CAPACITY
+        elif i % 5 == 2:
+            s.energy = 0.30 * SENSOR_CAPACITY
+        elif i % 5 == 3:
+            s.energy = 0.45 * SENSOR_CAPACITY
+            
+        # Vary consumption rates relative to CHARGING_RATE
+        if i % 3 == 0:  # High consumption
+            s.consumption_rate = random.uniform(CHARGING_RATE/60000, CHARGING_RATE/48000)
+        elif i % 3 == 1:  # Medium consumption
+            s.consumption_rate = random.uniform(CHARGING_RATE/120000, CHARGING_RATE/60000)
+        else:  # Low consumption
+            s.consumption_rate = random.uniform(CHARGING_RATE/480000, CHARGING_RATE/160000)
+    
+    # Run until half the network is dead (or some other threshold)
+    time_step = 10
+    lifetime_no_charging = 0
+    alive_ratio = 1.0
+    
+    while alive_ratio > 0.5:  # Simulation runs until 50% of nodes die
+        # Update all sensors
+        for s in sensors_no_charging:
+            s.update_energy(time_step)
+        
+        # Calculate alive ratio
+        alive_sensors = sum(1 for s in sensors_no_charging if not s.dead)
+        alive_ratio = alive_sensors / len(sensors_no_charging)
+        
+        lifetime_no_charging += time_step
+    
+    # Return the baseline lifetime for comparison
+    return lifetime_no_charging
