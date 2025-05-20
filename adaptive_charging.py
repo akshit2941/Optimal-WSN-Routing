@@ -182,7 +182,7 @@ def evaluate_charging_position(x, y, sensors):
     # Apply a nonlinear scaling for multiple covered sensors
     coverage_multiplier = 1.0
     if len(covered_sensors) > 1:
-        coverage_multiplier = len(covered_sensors) ** 1.5  # Superlinear scaling
+        coverage_multiplier = len(covered_sensors) ** 1.8  # Superlinear scaling
     
     return total_score * coverage_multiplier, covered_sensors
 
@@ -219,21 +219,27 @@ def run_optimal_position_simulation(num_steps=10, time_step=3, num_sensors=NUM_S
     # Set varied energy levels using thresholds from config
     for i, s in enumerate(sensors):
         if i % 5 == 0:
-            s.energy = 0.05 * SENSOR_CAPACITY
+            s.energy = 0.02 * SENSOR_CAPACITY  # Reduced from 0.05
         elif i % 5 == 1:
-            s.energy = 0.15 * SENSOR_CAPACITY
+            s.energy = 0.08 * SENSOR_CAPACITY  # Reduced from 0.15
         elif i % 5 == 2:
-            s.energy = 0.30 * SENSOR_CAPACITY
+            s.energy = 0.15 * SENSOR_CAPACITY  # Reduced from 0.30
         elif i % 5 == 3:
-            s.energy = 0.45 * SENSOR_CAPACITY
+            s.energy = 0.25 * SENSOR_CAPACITY  # Reduced from 0.45
             
-        # Vary consumption rates relative to CHARGING_RATE
+        # EXTREME consumption rates (1000x higher than before)
         if i % 3 == 0:  # High consumption
-            s.consumption_rate = random.uniform(CHARGING_RATE/60000, CHARGING_RATE/48000)
+            s.consumption_rate = random.uniform(CHARGING_RATE/30, CHARGING_RATE/24)  # 10x more than previous
         elif i % 3 == 1:  # Medium consumption
-            s.consumption_rate = random.uniform(CHARGING_RATE/120000, CHARGING_RATE/60000)
+            s.consumption_rate = random.uniform(CHARGING_RATE/60, CHARGING_RATE/30)  # 10x more than previous
         else:  # Low consumption
-            s.consumption_rate = random.uniform(CHARGING_RATE/480000, CHARGING_RATE/160000)
+            s.consumption_rate = random.uniform(CHARGING_RATE/240, CHARGING_RATE/80)  # 10x more than previous
+    
+    # Add extremely critical sensors with tiny energy and high consumption
+    for i in range(0, len(sensors), 10):  # Every 10th sensor
+        s = sensors[i]
+        s.energy = 0.005 * SENSOR_CAPACITY  # Only 0.5% energy
+        s.consumption_rate *= 2.0  # Double its consumption rate
     
     # Run simulation
     for step in range(num_steps):
@@ -299,8 +305,8 @@ def run_optimal_position_simulation(num_steps=10, time_step=3, num_sensors=NUM_S
             energy_needed_for_safe_return = distance_to_base * MOVEMENT_COST_PER_M * 1.2  # 20% safety margin
             
             # If we have enough energy for some charging and safe return, do a partial mission
-            if mc.energy > energy_needed_for_safe_return + (est_charging_energy * 0.5):
-                print(f"⚠️ Partially charging before return - enough energy for charging and safe return.")
+            if mc.energy > energy_needed_for_safe_return + (est_charging_energy * 0.3):
+                print(f"\033[91m⚠️ Partially charging before return - enough energy for charging and safe return.\033[0m")
                 # Move to position, charge, then return
                 mc.move_to(optimal_pos[0], optimal_pos[1])
                 charged_nodes, energy_transferred = mc.charge_nodes_in_radius(sensors)
@@ -313,9 +319,9 @@ def run_optimal_position_simulation(num_steps=10, time_step=3, num_sensors=NUM_S
                 path_history.append((base_station_x, base_station_y))
                 previous_energy = mc.energy
                 mc.energy = MC_CAPACITY
-                print(f"MC recharged at base station: {previous_energy:.1f}J → {mc.energy:.1f}J")
+                print(f"\033[92mMC recharged at base station: {previous_energy:.1f}J → {mc.energy:.1f}J\033[0m")
             else:
-                print(f"⚠️ Not enough energy for charging mission. Returning to base first...")
+                print(f"\033[91m⚠️ Not enough energy for charging mission. Returning to base first...\033[0m")
                 distance_to_base = np.linalg.norm([mc.x - base_station_x, mc.y - base_station_y])
                 energy_to_base = distance_to_base * MOVEMENT_COST_PER_M
                 mc.move_to(base_station_x, base_station_y)
@@ -323,10 +329,10 @@ def run_optimal_position_simulation(num_steps=10, time_step=3, num_sensors=NUM_S
                 path_history.append((base_station_x, base_station_y))
                 previous_energy = mc.energy
                 mc.energy = MC_CAPACITY
-                print(f"MC recharged at base station: {previous_energy:.1f}J → {mc.energy:.1f}J")
+                print(f"\033[93mMC recharged at base station: {previous_energy:.1f}J → {mc.energy:.1f}J\033[0m")
         else:
             # Enough energy for round trip, proceed normally
-            print(f"✓ Sufficient energy for complete mission. Moving to optimal position...")
+            print(f"\033[92m✓ Sufficient energy for complete mission. Moving to optimal position...\033[0m")
             mc.move_to(optimal_pos[0], optimal_pos[1])
             total_movement_energy += energy_to_target
 
@@ -349,6 +355,32 @@ def run_optimal_position_simulation(num_steps=10, time_step=3, num_sensors=NUM_S
             # Record the time when sensor was first charged (if it hasn't been charged before)
             if sensor_id not in sensors_charged_times:
                 sensors_charged_times[sensor_id] = current_time
+
+        # Add position batching: Stay longer at positions with many sensors (extended charging)
+        if len(covered_sensors) >= 3:
+            extra_charging_rounds = min(4, len(covered_sensors) // 2 + 1)
+            print(f"Position covers {len(covered_sensors)} sensors - staying for {extra_charging_rounds} additional rounds")
+            
+            for _ in range(extra_charging_rounds):
+                # Charge again without moving
+                extra_charged_nodes, extra_energy = mc.charge_nodes_in_radius(sensors)
+                total_energy_transferred += extra_energy
+                
+                # Update sensors' energy levels
+                for s in sensors:
+                    s.update_energy(time_step)
+                
+                # Update simulation time
+                current_time += time_step
+                
+                # Track additional charging for each sensor
+                for charged_item in extra_charged_nodes:
+                    if isinstance(charged_item, tuple):
+                        sensor_id = charged_item[0]
+                    else:
+                        sensor_id = charged_item
+                        
+                    sensors_received_charging.add(sensor_id)
 
         # Update simulation time
         current_time += time_step
@@ -433,34 +465,44 @@ def calculate_network_lifetime_ratio():
     Calculates the Life-Survival Ratio by comparing network lifetime
     with and without charging algorithm
     """
+    print("Calculating baseline lifetime (no charging)...")
+    
     # Run simulation without charging
     sensors_no_charging, _ = initialize_environment(num_sensors=NUM_SENSORS)
     
-    # Set the same initial energy levels and consumption rates as the main simulation
+    # Set the same extreme energy levels and consumption rates as the main simulation
     for i, s in enumerate(sensors_no_charging):
         if i % 5 == 0:
-            s.energy = 0.05 * SENSOR_CAPACITY
+            s.energy = 0.02 * SENSOR_CAPACITY
         elif i % 5 == 1:
-            s.energy = 0.15 * SENSOR_CAPACITY
+            s.energy = 0.08 * SENSOR_CAPACITY
         elif i % 5 == 2:
-            s.energy = 0.30 * SENSOR_CAPACITY
+            s.energy = 0.15 * SENSOR_CAPACITY
         elif i % 5 == 3:
-            s.energy = 0.45 * SENSOR_CAPACITY
+            s.energy = 0.25 * SENSOR_CAPACITY
             
-        # Vary consumption rates relative to CHARGING_RATE
-        if i % 3 == 0:  # High consumption
-            s.consumption_rate = random.uniform(CHARGING_RATE/60000, CHARGING_RATE/48000)
-        elif i % 3 == 1:  # Medium consumption
-            s.consumption_rate = random.uniform(CHARGING_RATE/120000, CHARGING_RATE/60000)
-        else:  # Low consumption
-            s.consumption_rate = random.uniform(CHARGING_RATE/480000, CHARGING_RATE/160000)
+        # Use exactly the same extreme consumption rates
+        if i % 3 == 0:
+            s.consumption_rate = random.uniform(CHARGING_RATE/30, CHARGING_RATE/24)
+        elif i % 3 == 1:
+            s.consumption_rate = random.uniform(CHARGING_RATE/60, CHARGING_RATE/30)
+        else:
+            s.consumption_rate = random.uniform(CHARGING_RATE/240, CHARGING_RATE/80)
     
-    # Run until half the network is dead (or some other threshold)
-    time_step = 10
+    # Add extremely critical sensors
+    for i in range(0, len(sensors_no_charging), 10):  # Every 10th sensor
+        s = sensors_no_charging[i]
+        s.energy = 0.005 * SENSOR_CAPACITY  # Only 0.5% energy
+        s.consumption_rate *= 2.0  # Double its consumption rate
+    
+    # Use smaller time step to get more precise lifetime
+    time_step = 5  
     lifetime_no_charging = 0
     alive_ratio = 1.0
     
-    while alive_ratio > 0.5:  # Simulation runs until 50% of nodes die
+    print("Running baseline simulation...")
+    
+    while alive_ratio > 0.5 and lifetime_no_charging < 10000:  # Cap at reasonable time
         # Update all sensors
         for s in sensors_no_charging:
             s.update_energy(time_step)
@@ -470,6 +512,10 @@ def calculate_network_lifetime_ratio():
         alive_ratio = alive_sensors / len(sensors_no_charging)
         
         lifetime_no_charging += time_step
+        
+        # Progress indicator
+        if lifetime_no_charging % 50 == 0:
+            print(f"  - Baseline at {lifetime_no_charging}s: {alive_ratio*100:.1f}% alive")
     
-    # Return the baseline lifetime for comparison
+    print(f"  - Baseline lifetime: {lifetime_no_charging}s with {alive_ratio*100:.1f}% alive")
     return lifetime_no_charging

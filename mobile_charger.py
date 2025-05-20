@@ -35,7 +35,7 @@ class MobileCharger:
         self.energy -= energy_to_transfer
         return energy_to_transfer
         
-    def charge_nodes_in_radius(self, sensors):
+    def charge_nodes_in_radius(self, sensors, efficiency_factor=1.0):
         """
         Charge all sensor nodes within the charging radius using zone-based charging efficiency
         
@@ -74,7 +74,7 @@ class MobileCharger:
                 # Calculate energy to transfer
                 needed = sensor.capacity - sensor.energy
                 max_transfer = min(needed, self.energy)
-                energy_to_transfer = max_transfer * efficiency
+                energy_to_transfer = max_transfer * efficiency * efficiency_factor
                 
                 if energy_to_transfer > 0:
                     sensor.charge(energy_to_transfer)
@@ -86,3 +86,47 @@ class MobileCharger:
                         break
                         
         return charged_nodes, total_energy_transferred
+    
+    def move_with_charging(self, target_x, target_y, sensors, path_segments=5):
+        """Move to target while charging sensors along the path"""
+        if self.energy <= 0:
+            return False, 0
+            
+        start_x, start_y = self.x, self.y
+        distance = np.linalg.norm([target_x - start_x, target_y - start_y])
+        movement_cost = distance * MOVEMENT_COST_PER_M
+        
+        if self.energy < movement_cost:
+            return False, 0
+            
+        # Deduct movement energy
+        self.energy -= movement_cost
+        
+        # Track energy transferred
+        total_energy = 0
+        charged_sensors = set()
+        
+        # Move in segments, charging at each step
+        for i in range(path_segments + 1):
+            # Calculate intermediate position
+            t = i / path_segments
+            self.x = start_x + t * (target_x - start_x)
+            self.y = start_y + t * (target_y - start_y)
+            
+            # Charge with reduced efficiency (70% while moving)
+            efficiency_factor = 0.7  # 70% as effective while moving
+            charged, energy = self.charge_nodes_in_radius(sensors, efficiency_factor)
+            
+            # Track results
+            total_energy += energy
+            for node in charged:
+                if isinstance(node, tuple):
+                    charged_sensors.add(node[0])
+                else:
+                    charged_sensors.add(node)
+        
+        # Finish at exact target
+        self.x = target_x
+        self.y = target_y
+        
+        return True, total_energy

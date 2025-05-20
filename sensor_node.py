@@ -16,7 +16,13 @@ class SensorNode:
 
     def update_energy(self, seconds):
         if not self.dead:
-            self.energy -= self.consumption_rate * seconds
+            # Random energy spike for 5% of updates
+            if random.random() < 0.05 and seconds > 0:
+                spike_factor = random.uniform(1.5, 3.0)
+                self.energy -= self.consumption_rate * seconds * spike_factor
+            else:
+                self.energy -= self.consumption_rate * seconds
+                
             if self.energy <= 0:
                 self.energy = 0
                 self.dead = True

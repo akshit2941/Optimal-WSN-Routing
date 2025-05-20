@@ -82,7 +82,7 @@ def main():
     # Now run the simulation with longer parameters (visualization calls will do nothing)
     sensors, mc, path_history, metrics = run_optimal_position_simulation(
         num_steps=50,       # Increased from 6 to 20 for longer simulation
-        time_step=10,        # Increased from 3 to 5 for more time per step
+        time_step=30,        # Increased from 3 to 5 for more time per step
         num_sensors=NUM_SENSORS      # Used from config
     )
     
