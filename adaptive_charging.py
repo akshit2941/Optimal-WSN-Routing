@@ -186,14 +186,18 @@ def evaluate_charging_position(x, y, sensors):
     
     return total_score * coverage_multiplier, covered_sensors
 
-def run_optimal_position_simulation(num_steps=10, time_step=3, num_sensors=NUM_SENSORS):
+def run_optimal_position_simulation(num_steps=10, time_step=3, num_sensors=NUM_SENSORS, random_seed=None):
     """
     Run a simulation using the optimal position strategy for charging,
     with improved round-trip energy planning
     """
-    # Set random seed for reproducibility
-    random.seed(42)
-    np.random.seed(42)
+    # Set random seed for reproducibility - use provided seed if available
+    if random_seed is not None:
+        random.seed(random_seed)
+        np.random.seed(random_seed)
+    else:
+        random.seed(42)  # fallback to original seed
+        np.random.seed(42)
     
     # Initialize environment
     sensors, mc = initialize_environment(num_sensors=num_sensors)

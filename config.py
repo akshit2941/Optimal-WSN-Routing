@@ -3,7 +3,7 @@ AREA_WIDTH = 600        # Width of the simulation area in meters
 AREA_HEIGHT = 600       # Height of the simulation area in meters
 
 # Sensor and MC Parameters
-NUM_SENSORS = 600               # Total number of sensors deployed
+NUM_SENSORS = 300               # Total number of sensors deployed
 SENSOR_CAPACITY = 10800         # Maximum energy capacity of each sensor in Joules (10.8 kJ)
 MC_CAPACITY = 1000000           # Maximum energy capacity of the mobile charger (MC) in Joules
 MC_SPEED = 3                    # Speed of the mobile charger in meters per second
